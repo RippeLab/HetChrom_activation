@@ -12,7 +12,7 @@
 ####################################################################################################################
 
 # specify folder location of the curateCC results
-folder_curated <- "/Volumes/sd17B002/Robin_Weinmann/iMEF_endpoint/combined_analysis_new/combined_plots/"
+folder_curated <- "insert file path/combined_plots/"
 
 # select cell quality filtering 
 # "g" (include good cells only), "b" (include bad cells only), "gb" (include both)

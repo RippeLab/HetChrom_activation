@@ -7,12 +7,12 @@
 ###############################################################################################
 
 # specify parent directory of input files
-inputroot <- "/Volumes/AnneWork/Robin/iMEF_endpoint/combined_analysis_new/dn/1618_p65/"
+inputroot <- "insert file path/dn/p65/"
 
 # specify path to FISH results.csv
 FISHinput <- paste0(inputroot,"bg_and_ff_corrected/results.csv")
 # specify path to ..._curated.csv
-CUREinput <- paste0(inputroot,"20230505172431_segmentCC_results/20230507123743_curateCC_results/mean_sd_projection_curated.csv")
+CUREinput <- paste0(inputroot,"xxxxxxxxxxxxxx_segmentCC_results/xxxxxxxxxxxxxx_curateCC_results/mean_sd_projection_curated.csv")
 
 # import csvs
 FISH <- read.csv(FISHinput,sep="\t")

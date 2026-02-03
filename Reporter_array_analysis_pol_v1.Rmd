@@ -1,0 +1,392 @@
+---
+title: "Reporter_array_analysis_v1"
+output: html_document
+
+---
+
+Preprocessing  with Fiji Macro, Cellpose and ilastik
+
+	1. Convert .ims to .tif and MaxProj with Macro_IMS_to_TIFF_and__makemaxZ_saveTIFF-NMv6.ijm
+	2. Split channels of maxproj images with splitchannel_saveim_V2.ijm
+	3. Cellpose
+		- Range cell diameter for U2OS 
+		- Batch processing: ~ 270 diameter  pixels
+  4. Merge 637nm (Halo) and 488nm (GFP) channels with Merge_channels_v1_CT.ijm
+  5. Import C1C3 .tif images + nuclear masks to ilastik, train with 5 images 
+
+---
+
+Obtain quantitative data for ALL IMAGES
+
+```{r}
+
+library(EBImage)
+library(dplyr)
+library(stringr)
+source('insert file path/quantNuclei_v01_LF.R')
+
+datadir <- 'insert file path/VP16/output/'
+nucmaskdir <- 'insert file path/VP16/dapi/mask/'
+arraymaskdir <- 'insert file path/VP16/composite/array_mask/'
+s5pdir <- 'insert file path/VP16/polII_S5P/'
+halodir <- 'insert file path/VP16/gbp_halo/'
+gfpdir <- 'insert file path/VP16/rtetr_gfp/'
+poliidir <- 'insert file path/VP16/polII/'
+
+filelist <- list.files(s5pdir, pattern = ".tif")
+#remove characters that is different between mask' and images' name
+imagenames <- gsub(".tif","", filelist)
+imagenames <- gsub("561nm_corr_","", imagenames)
+
+
+lapply(imagenames, function(filename){
+  
+  #Load images
+  nucmasks <- readImage(paste0(nucmaskdir, '405nm_corr_', filename, '_cp_masks.png'))
+  arraymasks_ori <- readImage(paste0(arraymaskdir, '637_488-', filename, '_Probabilities.tiff'))
+  s5p <- readImage(paste0(s5pdir, '561nm_corr_', filename, '.tif'))
+  halo <- readImage(paste0(halodir, '637nm_corr_', filename, '.tif'))
+  gfp <- readImage(paste0(gfpdir, '488nm_corr_', filename, '.tif'))
+  polii <- readImage(paste0(poliidir, '730nm_corr_', filename, '.tif'))
+  
+  #reformat nuclear masks
+  nucmasks <-Image(as.numeric(as.factor(nucmasks))-1,dim = dim(nucmasks))
+  
+  #remove nuclei on edge of image
+  dims<-dim(nucmasks)
+  #get all nuclei ids that lies at the border of the nucmasks
+  border<- c(nucmasks[1:dims[1],1], nucmasks[1:dims[1],dims[2]],nucmasks[1,1:dims[2]],nucmasks[dims[1],1:dims[2]])
+  ids <- unique(border[which(border != 0)])
+  #somehow rmObjects does not work on double anymore
+  storage.mode(nucmasks) <- 'integer'
+  nucmasks <- rmObjects((nucmasks), ids)
+  storage.mode(nucmasks) <- 'double'
+  
+  #smooth arraymasks and binarize with threshold 
+  arraymasks_blur <- gblur(arraymasks_ori, sigma=2)
+  #how do we decide the amount of blur?
+  arraythres <- 0.4
+  #is it the probability value?
+  bin_arraymasks <- arraymasks_blur > arraythres
+  display(bin_arraymasks)
+  #label all arrays in same cell to the same nucleus ID
+  arraymasks <- bin_arraymasks * nucmasks
+  
+  #nucleoplasm masks - everything within nucleus but not identified as array
+  nucplmasks <- (!bin_arraymasks) * nucmasks
+  
+  # make ring shape around array for calculating enrichment 
+  # label the ring mask with nucleus ID
+  dilate_binarraymasks <- dilate(bin_arraymasks, kern = makeBrush(5, shape = "disc"))
+  ringmasks <- (dilate_binarraymasks - bin_arraymasks) * nucmasks
+
+  #### Get morphological features of nucleus and array
+  #nucleus
+  #some images do not have any cells identified --> fill df with NA
+  nucfeat <- cbind(computeFeatures.moment(nucmasks),computeFeatures.shape(nucmasks))
+  if (is.null(nucfeat) == FALSE){
+  nucfeat_area <- data.frame("x"=round(nucfeat[,"m.cx"]),"y"=round(nucfeat[,"m.cy"]),"nucleus_area"=nucfeat[,"s.area"])
+  nucfeat_area$maskID <- rownames(nucfeat)
+  
+  
+  #array masks
+  arrayfeat <- computeFeatures.shape(arraymasks)
+  arrayfeat_area <- data.frame("array_size"= arrayfeat[,"s.area"])
+  arrayfeat_area$maskID <- rownames(arrayfeat)
+  
+    #some images do not have any array identified --> fill df with NA
+  if (is.null(arrayfeat)){
+    arrayfeat_area <- data.frame("maskID" = nucfeat_area$maskID)
+    arrayfeat_area$array_size <- NA
+  }
+  
+  #nucleoplasm masks
+  npfeat <- computeFeatures.shape(nucplmasks)
+  npfeat_area <- data.frame("nucleoplasms_area"= npfeat[,"s.area"])
+  npfeat_area$maskID <- rownames(npfeat)
+  
+  if (is.null(npfeat)){
+    npfeat_area <- data.frame("maskID" = nucfeat_area$maskID)
+    npfeat_area$nucleoplasms_area <- NA
+  }
+  
+  feat <- nucfeat_area %>% full_join(arrayfeat_area, by="maskID") %>% full_join(npfeat_area, by="maskID")
+  feat_colorder <- c("maskID", "x", "y", "nucleus_area", "array_size", "nucleoplasms_area")
+  feat <- feat[, feat_colorder]
+  
+  ### Obtain S5P signal intensity features at Nucleus (to ensure no signal is not due to untransfected + nodox samples quant)
+  s5p_nuc_mean <- quantNuclei(nucmasks, s5p, mean)
+  s5p_nuc_median <- quantNuclei(nucmasks, s5p, median)
+  s5p_nuc_sd <- quantNuclei(nucmasks, s5p, sd)
+  s5p_nuc_max <- quantNuclei(nucmasks, s5p, max)
+  s5p_nuc_intden <- quantNuclei(nucmasks, s5p, sum)
+  #what is intden?
+  s5p_nuc <- data.frame(s5p_nuc_mean, s5p_nuc_median, s5p_nuc_sd, s5p_nuc_max, s5p_nuc_intden)
+  s5p_nuc$maskID <- rownames(s5p_nuc)
+  
+  ### Obtain PolII signal intensity features at Nucleus (to ensure no signal is not due to untransfected + nodox samples quant)
+  polii_nuc_mean <- quantNuclei(nucmasks, polii, mean)
+  polii_nuc_median <- quantNuclei(nucmasks, polii, median)
+  polii_nuc_sd <- quantNuclei(nucmasks, polii, sd)
+  polii_nuc_max <- quantNuclei(nucmasks, polii, max)
+  polii_nuc_intden <- quantNuclei(nucmasks, polii, sum)
+  #what is intden?
+  polii_nuc <- data.frame(polii_nuc_mean, polii_nuc_median, polii_nuc_sd, polii_nuc_max, polii_nuc_intden)
+  polii_nuc$maskID <- rownames(polii_nuc)
+  
+  ### Obtain Halo and GFP signal intensity features at Nucleus (to ensure no signal is not due to untransfected) (esp for nodox samples)
+  halo_nuc_mean <- quantNuclei(nucmasks, halo, mean)
+  halo_nuc_median <- quantNuclei(nucmasks, halo, median)
+  halo_nuc_intden <- quantNuclei(nucmasks, halo, sum)
+  
+  gfp_nuc_mean <- quantNuclei(nucmasks, gfp, mean)
+  gfp_nuc_median <- quantNuclei(nucmasks, gfp, median)
+  gfp_nuc_intden <- quantNuclei(nucmasks, gfp, sum)
+  
+  #why not sd and max for the gfp and halo?
+  
+  halo_gfp_nuc <- data.frame(halo_nuc_mean, halo_nuc_median, halo_nuc_intden, gfp_nuc_mean, gfp_nuc_median, gfp_nuc_intden)
+  halo_gfp_nuc$maskID <- rownames(halo_gfp_nuc)
+  
+  ### Obtain S5P signal intensity features at Nucleoplasm (for background subtraction)
+  s5p_np_mean <- quantNuclei(nucplmasks, s5p, mean)
+  s5p_np_median <- quantNuclei(nucplmasks, s5p, median)
+  s5p_np_sd <- quantNuclei(nucplmasks, s5p, sd)
+  s5p_np_max <- quantNuclei(nucplmasks, s5p, max)
+  s5p_np_intden <- quantNuclei(nucplmasks, s5p, sum)
+  
+  s5p_np <- data.frame(s5p_np_mean, s5p_np_median, s5p_np_sd, s5p_np_max, s5p_np_intden)
+  s5p_np$maskID <- rownames(s5p_np)
+  
+    
+  ### Obtain PolII signal intensity features at Nucleoplasm (for background subtraction)
+  polii_np_mean <- quantNuclei(nucplmasks, polii, mean)
+  polii_np_median <- quantNuclei(nucplmasks, polii, median)
+  polii_np_sd <- quantNuclei(nucplmasks, polii, sd)
+  polii_np_max <- quantNuclei(nucplmasks, polii, max)
+  polii_np_intden <- quantNuclei(nucplmasks, polii, sum)
+  
+  polii_np <- data.frame(polii_np_mean, polii_np_median, polii_np_sd, polii_np_max, polii_np_intden)
+  polii_np$maskID <- rownames(polii_np)
+  
+  halo_np_mean <- quantNuclei(nucplmasks, halo, mean)
+  halo_np_median <- quantNuclei(nucplmasks, halo, median)
+  halo_np_intden <- quantNuclei(nucplmasks, halo, sum)
+  
+  gfp_np_mean <- quantNuclei(nucplmasks, gfp, mean)
+  gfp_np_median <- quantNuclei(nucplmasks, gfp, median)
+  gfp_np_intden <- quantNuclei(nucplmasks, gfp, sum)
+  
+  halo_gfp_np <- data.frame(halo_np_mean, halo_np_median, halo_np_intden, gfp_np_mean, gfp_np_median, gfp_np_intden)
+  halo_gfp_np$maskID <- rownames(halo_gfp_np)
+  
+  ### Obtain Halo and GFP signal intensity features at ARRAY (to ensure no signal is not due to untransfected/norecruitment at array) 
+  halo_array_mean <- quantNuclei(arraymasks, halo, mean)
+  halo_array_median <- quantNuclei(arraymasks, halo, median)
+  halo_array_intden <- quantNuclei(arraymasks, halo, sum)
+  
+  gfp_array_mean <- quantNuclei(arraymasks, gfp, mean)
+  gfp_array_median <- quantNuclei(arraymasks, gfp, median)
+  gfp_array_intden <- quantNuclei(arraymasks, gfp, sum)
+  
+  halo_gfp_array <- data.frame(halo_array_mean, halo_array_median, halo_array_intden, gfp_array_mean, gfp_array_median, gfp_array_intden)
+  halo_gfp_array$maskID <- rownames(halo_gfp_array)
+
+
+  ### Obtain S5P signal intensity features at ARRAY
+  s5p_array_mean <- quantNuclei(arraymasks, s5p, mean)
+  s5p_array_median <- quantNuclei(arraymasks, s5p, median)
+  s5p_array_sd <- quantNuclei(arraymasks, s5p, sd)
+  s5p_array_max <- quantNuclei(arraymasks, s5p, max)
+  s5p_array_intden <- quantNuclei(arraymasks, s5p, sum)
+  
+  s5p_array <- data.frame(s5p_array_mean, s5p_array_median, s5p_array_sd, s5p_array_max, s5p_array_intden)
+  s5p_array$maskID <- rownames(s5p_array)
+  
+  ### Obtain S5P signal intensity features at ARRAY RING (for enrichment analyses)
+  s5p_ring_mean <- quantNuclei(ringmasks, s5p, mean)
+  s5p_ring_median <- quantNuclei(ringmasks, s5p, median)
+  s5p_ring_sd <- quantNuclei(ringmasks, s5p, sd)
+  s5p_ring_max <- quantNuclei(ringmasks, s5p, max)
+  s5p_ring_intden <- quantNuclei(ringmasks, s5p, sum)
+  
+  s5p_ring <- data.frame(s5p_ring_mean, s5p_ring_median, s5p_ring_sd, s5p_ring_max, s5p_ring_intden)
+  s5p_ring$maskID <- rownames(s5p_ring)
+  
+    ### Obtain MS2 signal intensity features at ARRAY
+  polii_array_mean <- quantNuclei(arraymasks, polii, mean)
+  polii_array_median <- quantNuclei(arraymasks, polii, median)
+  polii_array_sd <- quantNuclei(arraymasks, polii, sd)
+  polii_array_max <- quantNuclei(arraymasks, polii, max)
+  polii_array_intden <- quantNuclei(arraymasks, polii, sum)
+  
+  polii_array <- data.frame(polii_array_mean, polii_array_median, polii_array_sd, polii_array_max, polii_array_intden)
+  polii_array$maskID <- rownames(polii_array)
+  
+  ### Obtain MS2 signal intensity features at ARRAY RING (for enrichment analyses)
+  polii_ring_mean <- quantNuclei(ringmasks, polii, mean)
+  polii_ring_median <- quantNuclei(ringmasks, polii, median)
+  polii_ring_sd <- quantNuclei(ringmasks, polii, sd)
+  polii_ring_max <- quantNuclei(ringmasks, polii, max)
+  polii_ring_intden <- quantNuclei(ringmasks, polii, sum)
+  
+  polii_ring <- data.frame(polii_ring_mean, polii_ring_median, polii_ring_sd, polii_ring_max, polii_ring_intden)
+  polii_ring$maskID <- rownames(polii_ring)
+  
+  halo_ring_mean <- quantNuclei(ringmasks, halo, mean)
+  halo_ring_median <- quantNuclei(ringmasks, halo, median)
+  halo_ring_intden <- quantNuclei(ringmasks, halo, sum)
+  
+  gfp_ring_mean <- quantNuclei(ringmasks, gfp, mean)
+  gfp_ring_median <- quantNuclei(ringmasks, gfp, median)
+  gfp_ring_intden <- quantNuclei(ringmasks, gfp, sum)
+  
+  halo_gfp_ring <- data.frame(halo_ring_mean, halo_ring_median, halo_ring_intden, gfp_ring_mean, gfp_ring_median, gfp_ring_intden)
+  halo_gfp_ring$maskID <- rownames(halo_gfp_ring)
+  
+  #summary
+  quantsum <- data.frame('Image'= filename, feat, polii_nuc, s5p_nuc, halo_gfp_nuc) %>%  full_join(polii_np, by="maskID") %>% full_join(s5p_np, by="maskID") %>% full_join(halo_gfp_np, by="maskID") %>% full_join(polii_array, by="maskID") %>% full_join(s5p_array, by="maskID") %>% full_join(halo_gfp_array, by="maskID") %>% full_join(polii_ring, by="maskID") %>% full_join(s5p_ring, by="maskID") %>% full_join(halo_gfp_ring, by="maskID")
+  
+  #quantsum <- data.frame('Image'= filename, feat, s5p_nuc, halo_gfp_nuc) %>% full_join(halo_gfp_array, by="maskID") %>% full_join(s5p_array, by="maskID") 
+  
+  write.table(quantsum, paste0(datadir, filename, '.csv'), sep="\t", row.names = F)
+  }
+})
+    
+
+
+
+```
+
+
+Combine all quantitative data (.csv) together in one dataframe
+
+```{r}
+library(dplyr)
+library(stringr)
+
+datadir <- 'insert file path/VP16/output/'
+
+#read csv files
+filelist <- list.files(datadir, pattern='.csv')
+
+#combine all quantsum csv files 
+datalist <- lapply(filelist, function(filename){
+  df <- read.table(paste0(datadir, filename), sep="\t", header=TRUE)
+})
+all <- bind_rows(datalist)
+
+all <- all %>% mutate(dox = case_when(
+                str_detect(Image, '_\\+Dox_') ~ 'yes',
+                str_detect(Image, '_-Dox_') ~ 'no')) 
+
+all$dox <- as.factor(all$dox)
+
+### change this according to your Effectors
+all <- all %>% mutate(effector = dplyr::case_when(
+                str_detect(Image, '-NLS_') ~ 'Ctrl',
+                str_detect(Image, '-HP1a_') ~ 'mHP1alpha',
+                str_detect(Image, '-KRAB_') ~ 'KRAB'
+))
+all$effector <- factor(all$effector, levels=c('Ctrl', 'mHP1alpha', 'KRAB'))
+
+
+
+```
+
+Filtering and Plots
+
+
+```{r}
+library(ggplot2)
+library(tidyr)
+library(EnvStats)
+library(scatterplot3d)
+
+##### Filtering #####
+outdir <- 'insert file path/VP16/data/'
+
+
+# create timestamp for this run
+timestamp <- format(Sys.time(),"%Y%m%d%H%M%S")
+
+# create outout folder
+dir.create(paste0(outdir,timestamp,"_data"))
+
+## Remove too small/big nuclei
+plot(all$nucleus_area)
+
+# threshold decided based on plotting nucleus area
+nuc_up <- 30000
+nuc_down <- 10000
+
+all_filt <- all %>% filter(between(nucleus_area, nuc_down, nuc_up))
+
+
+## Include only datapoints that have signals in all 3 channels to only include cells with all 3 plasmids transfected
+#plot(all_filt$reporter_nuc_mean)
+plot(all_filt$halo_nuc_mean)
+plot(all_filt$gfp_nuc_mean)
+# threshold based on untransfected images background mean value
+#reporter_nuc_thres <- 0.01
+halo_nuc_thres <- 0.000622913
+gfp_nuc_thres <- 0.001104264
+
+all_filt <- all_filt %>% filter(halo_nuc_mean > halo_nuc_thres) %>% filter(gfp_nuc_mean > gfp_nuc_thres)
+
+all_filt$halo_enriched_mean <- log2((all_filt$halo_array_mean)/(all_filt$halo_ring_mean))
+all_filt$gfp_enriched_mean <- log2((all_filt$gfp_array_mean)/(all_filt$gfp_ring_mean))
+all_filt$halobygfp_mean <- log2((all_filt$halo_array_mean/all_filt$halo_ring_mean)/(all_filt$gfp_array_mean/all_filt$gfp_ring_mean))
+
+#all_filt <- all_filt %>% select(1:28, 54:56, 29:53)
+
+nodox_only <- all_filt$dox == "no"
+Ctrl_only <- all_filt$effector == "Ctrl"
+
+combi_con <- nodox_only & Ctrl_only
+
+all_filt_Ctrl_nodox <- subset(all_filt, combi_con) 
+
+# include only datapoints that have both gfp and halo signal in array (= both activator and effector are recruited to array)
+plot(all_filt$halo_array_mean)
+plot(all_filt$gfp_array_mean)
+#threshold is arbitrary, based on looking at data+images
+halo_array_thres <- 0.01
+gfp_array_thres <- 0.01
+
+all_array <- all_filt %>% filter(halo_array_mean > halo_array_thres) %>% filter(gfp_array_mean > gfp_array_thres)
+
+#for dox
+dox_only_array <- all_array$dox == "yes"
+Ctrl_only_array <- all_array$effector == "Ctrl"
+mHP1alpha_only_array <- all_array$effector == "mHP1alpha"
+KRAB_only_array <- all_array$effector == "KRAB"
+
+Ctrl_combi_con_array <- dox_only_array & Ctrl_only_array
+mHP1alpha_combi_con_array <- dox_only_array & mHP1alpha_only_array
+KRAB_combi_con_array <- dox_only_array & KRAB_only_array
+
+all_array_Ctrl_dox <- subset(all_array, Ctrl_combi_con_array) 
+all_array_mHP1alpha_dox <- subset(all_array, mHP1alpha_combi_con_array)
+all_array_KRAB_dox <- subset(all_array, KRAB_combi_con_array)
+
+#for no dox
+
+mHP1alpha_only_filt <- all_filt$effector == "mHP1alpha"
+KRAB_only_filt <- all_filt$effector == "KRAB"
+
+mHP1alpha_combi_con_filt <- nodox_only & mHP1alpha_only_filt
+KRAB_combi_con_filt <- nodox_only & KRAB_only_filt
+
+all_filt_mHP1alpha_nodox <- subset(all_filt, mHP1alpha_combi_con_filt)
+all_filt_KRAB_nodox <- subset(all_filt, KRAB_combi_con_filt)
+
+combined_array_VP16_dox <- bind_rows(all_array_Ctrl_dox,all_array_mHP1alpha_dox, all_array_KRAB_dox)
+combined_VP16_nodox <- bind_rows(all_filt_Ctrl_nodox, all_filt_mHP1alpha_nodox, all_filt_KRAB_nodox)
+
+write.csv(combined_array_VP16_dox , file = paste0(outdir, timestamp, "_data", "/VP16_pol_dox_02.csv"), row.names = FALSE)
+write.csv(combined_VP16_nodox, file = paste0(outdir, timestamp, "_data", "/VP16_pol_nodox_02.csv"), row.names = FALSE)
+
+
+```
+

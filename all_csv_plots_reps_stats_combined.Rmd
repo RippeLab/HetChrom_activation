@@ -1,0 +1,713 @@
+---
+title: "01_plot_co-recruitment_gfp-gbp_v1"
+output: html_document
+date: "2024-01-20"
+---
+
+```{r}
+#Co- Recruit - DOX
+# specify folder location of the results
+datadir <- 'insert file path/co_rec_dox/'
+outdir <- 'insert file path/plot/corec/'
+
+# load libraries
+library(dplyr)
+library(ggplot2)
+library(ggprism)
+library(ggpubr)
+library(rstatix)
+
+# create timestamp for this run
+timestamp <- format(Sys.time(),"%Y%m%d%H%M%S")
+
+# create outout folder
+dir.create(paste0(outdir,timestamp,"_data"))
+
+#read csv files
+filelist <- list.files(datadir, pattern='.csv')
+
+#combine all quantsum csv files 
+datalist <- lapply(filelist, function(filename){
+  df <- read.table(paste0(datadir, filename), sep=",", header=TRUE)
+})
+
+all <- bind_rows(datalist)
+
+all <- all %>% mutate(activator = dplyr::case_when(
+                str_detect(Image, '_VP16-') ~ 'VP16',
+                str_detect(Image, '_p65-') ~ 'p65',
+                str_detect(Image, '_VPR-') ~ 'VPR'
+))
+
+all$activator <- factor(all$activator, levels=c('VP16', 'p65', 'VPR'))
+
+all <- all %>% mutate(combo = dplyr::case_when(
+                str_detect(Image, '_VP16-GBP_') ~ 'VP16_Ctrl',
+                str_detect(Image, '_VP16-HP1a_') ~ 'VP16_mHP1alpha',
+                str_detect(Image, '_VP16-KRAB_') ~ 'VP16_KRAB',
+                str_detect(Image, '_p65-GBP_') ~ 'p65_Ctrl',
+                str_detect(Image, '_p65-HP1a_') ~ 'p65_mHP1alpha',
+                str_detect(Image, '_p65-KRAB_') ~ 'p65_KRAB',
+                str_detect(Image, '_VPR-GBP_') ~ 'VPR_Ctrl',
+                str_detect(Image, '_VPR-HP1a_') ~ 'VPR_mHP1alpha',
+                str_detect(Image, '_VPR-KRAB_') ~ 'VPR_KRAB',
+))
+
+all$combo <- factor(all$combo, levels=c('VP16_Ctrl', 'VP16_mHP1alpha', 'VP16_KRAB', 'p65_Ctrl', 'p65_mHP1alpha', 'p65_KRAB', 'VPR_Ctrl', 'VPR_mHP1alpha', 'VPR_KRAB'))
+
+ summary_data <- all %>%
+  group_by(activator, effector) %>%
+  summarize(N= length(reporter_array_mean),
+  mean = mean(reporter_array_mean*1000),
+  median = median(reporter_array_mean*1000),
+  ci_lower = mean - qt(0.975, length(reporter_array_mean) - 1) * sd(reporter_array_mean*1000) / sqrt(length(reporter_array_mean)),
+  ci_upper = mean + qt(0.975, length(reporter_array_mean) - 1) * sd(reporter_array_mean*1000) / sqrt(length(reporter_array_mean))
+  )
+
+df_p_val <- all %>%
+  rstatix::group_by(activator) %>%
+  rstatix::wilcox_test(reporter_array_mean ~ effector)
+write.csv(df_p_val, file = paste0(outdir, timestamp, "_data", "/co-recruit_reporter_signal_data_wilcox_stats.csv"), row.names = FALSE)
+
+# signal across conditions
+overall_reporter_array_dox <- ggplot(all, aes(x = activator, y = (reporter_array_mean*1000))) +
+  xlab("") +
+  ylab("Nascent RNA Signal (a.u.)")+
+  geom_boxplot(aes(col = effector), width = 0.5, position = position_dodge(width = 0.8))+
+  scale_color_manual(values = c( "black","red", "skyblue")) +
+  # make into two different plots split by cell background
+  theme(strip.background = element_blank(), strip.placement = "outside") +
+  theme(
+    # give the plot a border and margin
+    panel.border = element_rect(color="black",fill=NA,size=2),
+    plot.margin = unit(c(0.0,0.0,0.0,0.0),"cm"),
+    # define axis text color, fontsize and tick properties
+    axis.text = element_text(size=10,colour="black"),
+    #axis.text.x = element_text(angle=90),
+    axis.ticks.y = element_line(colour="black",size=1),
+    axis.ticks.length=unit(3,"mm"),
+    # remove x axis ticks
+    axis.ticks.x = element_blank(),
+    # Remove grid lines
+    panel.grid.major = element_blank(), 
+    panel.grid.major.x = element_blank(),
+    panel.grid.minor = element_blank(),
+    # Change panel background
+    panel.background = element_blank(),
+    legend.key.width = unit(0.5, "cm"),  # Adjust legend width
+    legend.key.height = unit(0.5, "cm")
+   ) +
+   geom_pwc(aes(group = effector), method = "wilcox_test", label = "p.adj.signif",
+    y.position = 850, bracket.nudge.y = 0.08)
+print(overall_reporter_array_dox)
+ggsave(paste0(outdir, timestamp, "_data", "/co-recruit_reporter_signal.pdf"), overall_reporter_array_dox, dpi=300)
+write.csv(all, file = paste0(outdir, timestamp, "_data", "/co-recruit_reporter_signal_data.csv"), row.names = FALSE)
+write.csv(summary_data, file = paste0(outdir, timestamp, "_data", "/co-recruit_reporter_signal_summary.csv"), row.names = FALSE)
+
+```
+
+
+```{r}
+#Co- Recruit - NO DOX
+# specify folder location of the results
+datadir <- 'insert file path/co_rec_no_dox/'
+outdir <- 'insert file path/plot/corec/'
+
+# load libraries
+library(dplyr)
+library(ggplot2)
+library(ggprism)
+library(ggpubr)
+library(rstatix)
+
+# create timestamp for this run
+timestamp <- format(Sys.time(),"%Y%m%d%H%M%S")
+
+# create outout folder
+dir.create(paste0(outdir,timestamp,"_data"))
+
+#read csv files
+filelist <- list.files(datadir, pattern='.csv')
+
+#combine all quantsum csv files 
+datalist <- lapply(filelist, function(filename){
+  df <- read.table(paste0(datadir, filename), sep=",", header=TRUE)
+})
+all <- bind_rows(datalist)
+
+all <- all %>% mutate(activator = dplyr::case_when(
+                str_detect(Image, '_VP16-') ~ 'VP16',
+                str_detect(Image, '_p65-') ~ 'p65',
+                str_detect(Image, '_VPR-') ~ 'VPR'
+))
+
+all$activator <- factor(all$activator, levels=c('VP16', 'p65', 'VPR'))
+
+all <- all %>% mutate(combo = dplyr::case_when(
+                str_detect(Image, '_VP16-GBP_') ~ 'VP16_Ctrl',
+                str_detect(Image, '_VP16-HP1a_') ~ 'VP16_mHP1alpha',
+                str_detect(Image, '_VP16-KRAB_') ~ 'VP16_KRAB',
+                str_detect(Image, '_p65-GBP_') ~ 'p65_Ctrl',
+                str_detect(Image, '_p65-HP1a_') ~ 'p65_mHP1alpha',
+                str_detect(Image, '_p65-KRAB_') ~ 'p65_KRAB',
+                str_detect(Image, '_VPR-GBP_') ~ 'VPR_Ctrl',
+                str_detect(Image, '_VPR-HP1a_') ~ 'VPR_mHP1alpha',
+                str_detect(Image, '_VPR-KRAB_') ~ 'VPR_KRAB',
+))
+
+all$combo <- factor(all$combo, levels=c('VP16_Ctrl', 'VP16_mHP1alpha', 'VP16_KRAB', 'p65_Ctrl', 'p65_mHP1alpha', 'p65_KRAB', 'VPR_Ctrl', 'VPR_mHP1alpha', 'VPR_KRAB'))
+
+ summary_data <- all %>%
+  group_by(activator, effector) %>%
+  summarize(N= length(reporter_nuc_mean),
+  mean = mean(reporter_nuc_mean*1000),
+  median = median(reporter_nuc_mean*1000),
+  ci_lower = mean - qt(0.975, length(reporter_nuc_mean) - 1) * sd(reporter_nuc_mean*1000) / sqrt(length(reporter_nuc_mean)),
+  ci_upper = mean + qt(0.975, length(reporter_nuc_mean) - 1) * sd(reporter_nuc_mean*1000) / sqrt(length(reporter_nuc_mean))
+  )
+
+df_p_val <- all %>%
+  rstatix::group_by(activator) %>%
+  rstatix::wilcox_test(reporter_array_mean ~ effector) 
+write.csv(df_p_val, file = paste0(outdir, timestamp, "_data", "/co-recruit_reporter_signal_data_no-dox_wilcox_stats.csv"), row.names = FALSE) 
+
+# signal across conditions
+overall_reporter_nuc_no_dox <- ggplot(all, aes(x = activator, y = ((reporter_nuc_mean)*1000), col = effector)) +
+  xlab("") +
+  ylab("Nuclear RNA Signal (a.u.)")+
+  geom_boxplot(aes(col = effector), width = 0.5, position = position_dodge(width = 0.8))+
+  scale_color_manual(values = c( "black","red", "skyblue")) +
+  # make into two different plots split by cell background
+  theme(strip.background = element_blank(), strip.placement = "outside") +
+  theme(
+    # give the plot a border and margin
+    panel.border = element_rect(color="black",fill=NA,size=2),
+    plot.margin = unit(c(0.0,0.0,0.0,0.0),"cm"),
+    # define axis text color, fontsize and tick properties
+    axis.text = element_text(size=10,colour="black"),
+    #axis.text.x = element_text(angle=90),
+    axis.ticks.y = element_line(colour="black",size=1),
+    axis.ticks.length=unit(3,"mm"),
+    # remove x axis ticks
+    axis.ticks.x = element_blank(),
+    # Remove grid lines
+    panel.grid.major = element_blank(), 
+    panel.grid.major.x = element_blank(),
+    panel.grid.minor = element_blank(),
+    # Change panel background
+    panel.background = element_blank(),
+    legend.key.width = unit(0.5, "cm"),  # Adjust legend width
+    legend.key.height = unit(0.5, "cm")
+  )+
+  geom_pwc(aes(group = effector), method = "wilcox_test", label = "p.adj.signif",
+    y.position = 75, bracket.nudge.y = 0.08)
+print(overall_reporter_nuc_no_dox)
+ggsave(paste0(outdir, timestamp, "_data", "/co-recruit_reporter_signal_no-dox.pdf"), overall_reporter_nuc_no_dox, dpi=300)
+write.csv(all, file = paste0(outdir, timestamp, "_data", "/co-recruit_reporter_signal_data_no-dox.csv"), row.names = FALSE)
+write.csv(summary_data, file = paste0(outdir, timestamp, "_data", "/co-recruit_reporter_signal_summary_no-dox.csv"), row.names = FALSE)
+```
+
+```{r}
+#Distal - DOX
+# specify folder location of the results
+datadir <- 'insert file path/distal_dox/'
+outdir <- 'insert file path/plot/distal/'
+
+# load libraries
+library(dplyr)
+library(ggplot2)
+library(ggprism)
+library(ggpubr)
+library(rstatix)
+
+# create timestamp for this run
+timestamp <- format(Sys.time(),"%Y%m%d%H%M%S")
+
+# create outout folder
+dir.create(paste0(outdir,timestamp,"_data"))
+
+#read csv files
+filelist <- list.files(datadir, pattern='.csv')
+
+#combine all quantsum csv files 
+datalist <- lapply(filelist, function(filename){
+  df <- read.table(paste0(datadir, filename), sep=",", header=TRUE)
+})
+all <- bind_rows(datalist)
+
+all <- all %>% mutate(activator = dplyr::case_when(
+                str_detect(Image, '_VP16-') ~ 'VP16',
+                str_detect(Image, '_p65-') ~ 'p65',
+                str_detect(Image, '_VPR-') ~ 'VPR'
+))
+
+all$activator <- factor(all$activator, levels=c('VP16', 'p65', 'VPR'))
+
+all <- all %>% mutate(combo = dplyr::case_when(
+                str_detect(Image, '_VP16-NLS_') ~ 'VP16_Ctrl',
+                str_detect(Image, '_VP16-HP1a_') ~ 'VP16_mHP1alpha',
+                str_detect(Image, '_VP16-KRAB_') ~ 'VP16_KRAB',
+                str_detect(Image, '_p65-NLS_') ~ 'p65_Ctrl',
+                str_detect(Image, '_p65-HP1a_') ~ 'p65_mHP1alpha',
+                str_detect(Image, '_p65-KRAB_') ~ 'p65_KRAB',
+                str_detect(Image, '_VPR-NLS_') ~ 'VPR_Ctrl',
+                str_detect(Image, '_VPR-HP1a_') ~ 'VPR_mHP1alpha',
+                str_detect(Image, '_VPR-KRAB_') ~ 'VPR_KRAB',
+))
+
+all$combo <- factor(all$combo, levels=c('VP16_Ctrl', 'VP16_mHP1alpha', 'VP16_KRAB', 'p65_Ctrl', 'p65_mHP1alpha', 'p65_KRAB', 'VPR_Ctrl', 'VPR_mHP1alpha', 'VPR_KRAB'))
+
+ summary_data <- all %>%
+  group_by(activator, effector) %>%
+  summarize(N= length(reporter_array_mean),
+  mean = mean(reporter_array_mean*1000),
+  median = median(reporter_array_mean*1000),
+  ci_lower = mean - qt(0.975, length(reporter_array_mean) - 1) * sd(reporter_array_mean*1000) / sqrt(length(reporter_array_mean)),
+  ci_upper = mean + qt(0.975, length(reporter_array_mean) - 1) * sd(reporter_array_mean*1000) / sqrt(length(reporter_array_mean))
+  )
+
+df_p_val <- all %>%
+  rstatix::group_by(activator) %>%
+  rstatix::wilcox_test(reporter_array_mean ~ effector) 
+write.csv(df_p_val, file = paste0(outdir, timestamp, "_data", "/distal_reporter_signal_data_wilcox_stats.csv"), row.names = FALSE) 
+
+# signal across conditions
+overall_reporter_array_dox <- ggplot(all, aes(x = activator, y = ((reporter_array_mean)*1000), col = effector)) +
+  xlab("") +
+  ylab("Nascent RNA Signal (a.u.)")+
+  geom_boxplot(aes(col = effector), width = 0.5, position = position_dodge(width = 0.8))+
+  scale_color_manual(values = c( "black","red", "skyblue")) +
+  # make into two different plots split by cell background
+  theme(strip.background = element_blank(), strip.placement = "outside") +
+  theme(
+    # give the plot a border and margin
+    panel.border = element_rect(color="black",fill=NA,size=2),
+    plot.margin = unit(c(0.0,0.0,0.0,0.0),"cm"),
+    # define axis text color, fontsize and tick properties
+    axis.text = element_text(size=10,colour="black"),
+    #axis.text.x = element_text(angle=90),
+    axis.ticks.y = element_line(colour="black",size=1),
+    axis.ticks.length=unit(3,"mm"),
+    # remove x axis ticks
+    axis.ticks.x = element_blank(),
+    # Remove grid lines
+    panel.grid.major = element_blank(), 
+    panel.grid.major.x = element_blank(),
+    panel.grid.minor = element_blank(),
+    # Change panel background
+    panel.background = element_blank(),
+    legend.key.width = unit(0.5, "cm"),  # Adjust legend width
+    legend.key.height = unit(0.5, "cm")
+  )+
+  geom_pwc(aes(group = effector), method = "wilcox_test", label = "p.adj.signif",
+    y.position = 900, bracket.nudge.y = 0.08)
+print(overall_reporter_array_dox)
+ggsave(paste0(outdir, timestamp, "_data", "/distal_reporter_signal.pdf"), overall_reporter_array_dox, dpi=300)
+write.csv(all, file = paste0(outdir, timestamp, "_data", "/distal_reporter_signal_data.csv"), row.names = FALSE)
+write.csv(summary_data, file = paste0(outdir, timestamp, "_data", "/distal_reporter_signal_summary.csv"), row.names = FALSE)
+```
+
+```{r}
+#Distal - NO DOX
+# specify folder location of the results
+datadir <- 'insert file path/distal_no_dox/'
+outdir <- 'insert file path/plot/distal/'
+
+# load libraries
+library(dplyr)
+library(ggplot2)
+library(ggprism)
+library(ggpubr)
+library(rstatix)
+
+# create timestamp for this run
+timestamp <- format(Sys.time(),"%Y%m%d%H%M%S")
+
+# create outout folder
+dir.create(paste0(outdir,timestamp,"_data"))
+
+#read csv files
+filelist <- list.files(datadir, pattern='.csv')
+
+#combine all quantsum csv files 
+datalist <- lapply(filelist, function(filename){
+  df <- read.table(paste0(datadir, filename), sep=",", header=TRUE)
+})
+all <- bind_rows(datalist)
+
+all <- all %>% mutate(activator = dplyr::case_when(
+                str_detect(Image, '_VP16-') ~ 'VP16',
+                str_detect(Image, '_p65-') ~ 'p65',
+                str_detect(Image, '_VPR-') ~ 'VPR'
+))
+
+all$activator <- factor(all$activator, levels=c('VP16', 'p65', 'VPR'))
+
+all <- all %>% mutate(combo = dplyr::case_when(
+                str_detect(Image, '_VP16-NLS_') ~ 'VP16_Ctrl',
+                str_detect(Image, '_VP16-HP1a_') ~ 'VP16_mHP1alpha',
+                str_detect(Image, '_VP16-KRAB_') ~ 'VP16_KRAB',
+                str_detect(Image, '_p65-NLS_') ~ 'p65_Ctrl',
+                str_detect(Image, '_p65-HP1a_') ~ 'p65_mHP1alpha',
+                str_detect(Image, '_p65-KRAB_') ~ 'p65_KRAB',
+                str_detect(Image, '_VPR-NLS_') ~ 'VPR_Ctrl',
+                str_detect(Image, '_VPR-HP1a_') ~ 'VPR_mHP1alpha',
+                str_detect(Image, '_VPR-KRAB_') ~ 'VPR_KRAB',
+))
+
+all$combo <- factor(all$combo, levels=c('VP16_Ctrl', 'VP16_mHP1alpha', 'VP16_KRAB', 'p65_Ctrl', 'p65_mHP1alpha', 'p65_KRAB', 'VPR_Ctrl', 'VPR_mHP1alpha', 'VPR_KRAB'))
+
+ summary_data <- all %>%
+  group_by(activator, effector) %>%
+  summarize(N= length(reporter_nuc_mean),
+  mean = mean(reporter_nuc_mean*1000),
+  median = median(reporter_nuc_mean*1000),
+  ci_lower = mean - qt(0.975, length(reporter_nuc_mean) - 1) * sd(reporter_nuc_mean*1000) / sqrt(length(reporter_nuc_mean)),
+  ci_upper = mean + qt(0.975, length(reporter_nuc_mean) - 1) * sd(reporter_nuc_mean*1000) / sqrt(length(reporter_nuc_mean))
+  )
+
+df_p_val <- all %>%
+  rstatix::group_by(activator) %>%
+  rstatix::wilcox_test(reporter_array_mean ~ effector)
+write.csv(df_p_val, file = paste0(outdir, timestamp, "_data", "/distal_reporter_signal_data_no-dox_wilcox_stats.csv"), row.names = FALSE)
+
+# signal across conditions
+overall_reporter_nuc_no_dox <- ggplot(all, aes(x = activator, y = ((reporter_nuc_mean)*1000), col = effector)) +
+  xlab("") +
+  ylab("Nuclear RNA Signal (a.u.)")+
+  geom_boxplot(aes(col = effector), width = 0.5, position = position_dodge(width = 0.8))+
+  scale_color_manual(values = c( "black","red", "skyblue")) +
+  # make into two different plots split by cell background
+  theme(strip.background = element_blank(), strip.placement = "outside") +
+  theme(
+    # give the plot a border and margin
+    panel.border = element_rect(color="black",fill=NA,size=2),
+    plot.margin = unit(c(0.0,0.0,0.0,0.0),"cm"),
+    # define axis text color, fontsize and tick properties
+    axis.text = element_text(size=10,colour="black"),
+    #axis.text.x = element_text(angle=90),
+    axis.ticks.y = element_line(colour="black",size=1),
+    axis.ticks.length=unit(3,"mm"),
+    # remove x axis ticks
+    axis.ticks.x = element_blank(),
+    # Remove grid lines
+    panel.grid.major = element_blank(), 
+    panel.grid.major.x = element_blank(),
+    panel.grid.minor = element_blank(),
+    # Change panel background
+    panel.background = element_blank(),
+    legend.key.width = unit(0.5, "cm"),  # Adjust legend width
+    legend.key.height = unit(0.5, "cm")
+  )+
+  geom_pwc(aes(group = effector), method = "wilcox_test", label = "p.adj.signif",
+    y.position = 200, bracket.nudge.y = 0.08)
+print(overall_reporter_nuc_no_dox)
+ggsave(paste0(outdir, timestamp, "_data", "/distal_reporter_signal_no-dox.pdf"), overall_reporter_nuc_no_dox, dpi=300)
+write.csv(all, file = paste0(outdir, timestamp, "_data", "/distal_reporter_signal_data_no-dox.csv"), row.names = FALSE)
+write.csv(summary_data, file = paste0(outdir, timestamp, "_data", "/distal_reporter_signal_summary_no-dox.csv"), row.names = FALSE)
+```
+
+```{r}
+#Pol - DOX
+# specify folder location of the results
+datadir <- 'insert file path/pol_dox/'
+outdir <- 'insert file path/plot/pol/'
+
+# load libraries
+library(dplyr)
+library(ggplot2)
+library(ggprism)
+library(ggpubr)
+library(rstatix)
+
+# create timestamp for this run
+timestamp <- format(Sys.time(),"%Y%m%d%H%M%S")
+
+# create outout folder
+dir.create(paste0(outdir,timestamp,"_data"))
+
+#read csv files
+filelist <- list.files(datadir, pattern='.csv')
+
+#combine all quantsum csv files 
+datalist <- lapply(filelist, function(filename){
+  df <- read.table(paste0(datadir, filename), sep=",", header=TRUE)
+})
+all <- bind_rows(datalist)
+
+all <- all %>% mutate(activator = dplyr::case_when(
+                str_detect(Image, '_VP16-') ~ 'VP16',
+                str_detect(Image, '_p65-') ~ 'p65',
+                str_detect(Image, '_VPR-') ~ 'VPR'
+))
+
+all$activator <- factor(all$activator, levels=c('VP16', 'p65', 'VPR'))
+
+all <- all %>% mutate(combo = dplyr::case_when(
+                str_detect(Image, '_VP16-NLS_') ~ 'VP16_Ctrl',
+                str_detect(Image, '_VP16-HP1a_') ~ 'VP16_mHP1alpha',
+                str_detect(Image, '_VP16-KRAB_') ~ 'VP16_KRAB',
+                str_detect(Image, '_p65-NLS_') ~ 'p65_Ctrl',
+                str_detect(Image, '_p65-HP1a_') ~ 'p65_mHP1alpha',
+                str_detect(Image, '_p65-KRAB_') ~ 'p65_KRAB',
+                str_detect(Image, '_VPR-NLS_') ~ 'VPR_Ctrl',
+                str_detect(Image, '_VPR-HP1a_') ~ 'VPR_mHP1alpha',
+                str_detect(Image, '_VPR-KRAB_') ~ 'VPR_KRAB',
+))
+
+all$combo <- factor(all$combo, levels=c('VP16_Ctrl', 'VP16_mHP1alpha', 'VP16_KRAB', 'p65_Ctrl', 'p65_mHP1alpha', 'p65_KRAB', 'VPR_Ctrl', 'VPR_mHP1alpha', 'VPR_KRAB'))
+
+all$polii_enriched_mean <- log2((all$polii_array_mean)/(all$polii_ring_mean))
+all$s5p_enriched_mean <- log2((all$s5p_array_mean)/(all$s5p_ring_mean))
+all$poliibys5p_mean <- log2(((all$polii_array_mean)/(all$polii_ring_mean))/((all$s5p_array_mean)/(all$s5p_ring_mean)))
+
+  summary_data_polii <- all %>%
+  group_by(activator, effector) %>%
+  summarize(N= length(polii_enriched_mean),
+  mean = mean(polii_enriched_mean),
+  median = median(polii_enriched_mean),
+  ci_lower = mean - qt(0.975, length(polii_enriched_mean) - 1) * sd(polii_enriched_mean) / sqrt(length(polii_enriched_mean)),
+  ci_upper = mean + qt(0.975, length(polii_enriched_mean) - 1) * sd(polii_enriched_mean) / sqrt(length(polii_enriched_mean))
+  )
+
+  summary_data_s5p <- all %>%
+  group_by(activator, effector) %>%
+  summarize(N= length(s5p_enriched_mean),
+  mean = mean(s5p_enriched_mean),
+  median = median(s5p_enriched_mean),
+  ci_lower = mean - qt(0.975, length(s5p_enriched_mean) - 1) * sd(s5p_enriched_mean) / sqrt(length(s5p_enriched_mean)),
+  ci_upper = mean + qt(0.975, length(s5p_enriched_mean) - 1) * sd(s5p_enriched_mean) / sqrt(length(s5p_enriched_mean))
+  )
+
+df_p_val_polii <- all %>%
+  rstatix::group_by(activator) %>%
+  rstatix::wilcox_test(polii_enriched_mean ~ effector) 
+write.csv(df_p_val_polii, file = paste0(outdir, timestamp, "_data", "/polii_signal_data_wilcox_stats.csv"), row.names = FALSE)
+
+df_p_val_s5p <- all %>%
+  rstatix::group_by(activator) %>%
+  rstatix::wilcox_test(s5p_enriched_mean ~ effector)
+write.csv(df_p_val_s5p, file = paste0(outdir, timestamp, "_data", "/s5p_signal_data_wilcox_stats.csv"), row.names = FALSE)
+
+# signal across conditions
+overall_polii_dox <- ggplot(all, aes(x = activator, y = ((polii_enriched_mean)), col = effector)) +
+  xlab("") +
+  ylab("Enrichment of RNA PolII at the reporter (log2FC)")+
+  geom_boxplot(aes(col = effector), width = 0.5, position = position_dodge(width = 0.8))+
+  scale_color_manual(values = c( "black","red", "skyblue")) +
+  # make into two different plots split by cell background
+  theme(strip.background = element_blank(), strip.placement = "outside") +
+  theme(
+    # give the plot a border and margin
+    panel.border = element_rect(color="black",fill=NA,size=2),
+    plot.margin = unit(c(0.0,0.0,0.0,0.0),"cm"),
+    # define axis text color, fontsize and tick properties
+    axis.text = element_text(size=10,colour="black"),
+    #axis.text.x = element_text(angle=90),
+    axis.ticks.y = element_line(colour="black",size=1),
+    axis.ticks.length=unit(3,"mm"),
+    # remove x axis ticks
+    axis.ticks.x = element_blank(),
+    # Remove grid lines
+    panel.grid.major = element_blank(), 
+    panel.grid.major.x = element_blank(),
+    panel.grid.minor = element_blank(),
+    # Change panel background
+    panel.background = element_blank(),
+    legend.key.width = unit(0.5, "cm"),  # Adjust legend width
+    legend.key.height = unit(0.5, "cm")
+  ) + 
+  geom_pwc(aes(group = effector), method = "wilcox_test", label = "p.adj.signif",
+    y.position = 1.5, bracket.nudge.y = 0.08)
+print(overall_polii_dox)
+ggsave(paste0(outdir, timestamp, "_data", "/polii_signal.pdf"), overall_polii_dox, dpi=300)
+write.csv(all, file = paste0(outdir, timestamp, "_data", "/polii_signal_data.csv"), row.names = FALSE)
+write.csv(summary_data_polii, file = paste0(outdir, timestamp, "_data", "/polii_signal_summary.csv"), row.names = FALSE)
+
+# signal across conditions
+overall_s5p_dox <- ggplot(all, aes(x = activator, y = ((s5p_enriched_mean)), col = effector)) +
+  xlab("") +
+  ylab("Enrichment of RNA PolII S5p at the reporter (log2FC)")+
+  geom_boxplot(aes(col = effector), width = 0.5, position = position_dodge(width = 0.8))+
+  scale_color_manual(values = c( "black","red", "skyblue")) +
+  # make into two different plots split by cell background
+  theme(strip.background = element_blank(), strip.placement = "outside") +
+  theme(
+    # give the plot a border and margin
+    panel.border = element_rect(color="black",fill=NA,size=2),
+    plot.margin = unit(c(0.0,0.0,0.0,0.0),"cm"),
+    # define axis text color, fontsize and tick properties
+    axis.text = element_text(size=10,colour="black"),
+    #axis.text.x = element_text(angle=90),
+    axis.ticks.y = element_line(colour="black",size=1),
+    axis.ticks.length=unit(3,"mm"),
+    # remove x axis ticks
+    axis.ticks.x = element_blank(),
+    # Remove grid lines
+    panel.grid.major = element_blank(), 
+    panel.grid.major.x = element_blank(),
+    panel.grid.minor = element_blank(),
+    # Change panel background
+    panel.background = element_blank(),
+    legend.key.width = unit(0.5, "cm"),  # Adjust legend width
+    legend.key.height = unit(0.5, "cm")
+  )+ 
+  geom_pwc(aes(group = effector), method = "wilcox_test", label = "p.adj.signif",
+    y.position = 3, bracket.nudge.y = 0.08)
+print(overall_s5p_dox)
+ggsave(paste0(outdir, timestamp, "_data", "/s5p_signal.pdf"), overall_s5p_dox, dpi=300)
+write.csv(all, file = paste0(outdir, timestamp, "_data", "/s5p_signal_data.csv"), row.names = FALSE)
+write.csv(summary_data_s5p, file = paste0(outdir, timestamp, "_data", "/s5p_signal_summary.csv"), row.names = FALSE)
+
+```
+
+```{r}
+#Pol - NO DOX
+# specify folder location of the results
+datadir <- 'insert file path/pol_no_dox/'
+outdir <- 'insert file path/plot/pol/'
+
+# load libraries
+library(dplyr)
+library(ggplot2)
+library(ggprism)
+library(ggpubr)
+library(rstatix)
+
+# create timestamp for this run
+timestamp <- format(Sys.time(),"%Y%m%d%H%M%S")
+
+# create outout folder
+dir.create(paste0(outdir,timestamp,"_data"))
+
+#read csv files
+filelist <- list.files(datadir, pattern='.csv')
+
+#combine all quantsum csv files 
+datalist <- lapply(filelist, function(filename){
+  df <- read.table(paste0(datadir, filename), sep=",", header=TRUE)
+})
+all <- bind_rows(datalist)
+
+all <- all %>% mutate(activator = dplyr::case_when(
+                str_detect(Image, '_VP16-') ~ 'VP16',
+                str_detect(Image, '_p65-') ~ 'p65',
+                str_detect(Image, '_VPR-') ~ 'VPR'
+))
+
+all$activator <- factor(all$activator, levels=c('VP16', 'p65', 'VPR'))
+
+all <- all %>% mutate(combo = dplyr::case_when(
+                str_detect(Image, '_VP16-NLS_') ~ 'VP16_Ctrl',
+                str_detect(Image, '_VP16-HP1a_') ~ 'VP16_mHP1alpha',
+                str_detect(Image, '_VP16-KRAB_') ~ 'VP16_KRAB',
+                str_detect(Image, '_p65-NLS_') ~ 'p65_Ctrl',
+                str_detect(Image, '_p65-HP1a_') ~ 'p65_mHP1alpha',
+                str_detect(Image, '_p65-KRAB_') ~ 'p65_KRAB',
+                str_detect(Image, '_VPR-NLS_') ~ 'VPR_Ctrl',
+                str_detect(Image, '_VPR-HP1a_') ~ 'VPR_mHP1alpha',
+                str_detect(Image, '_VPR-KRAB_') ~ 'VPR_KRAB',
+))
+
+all$combo <- factor(all$combo, levels=c('VP16_Ctrl', 'VP16_mHP1alpha', 'VP16_KRAB', 'p65_Ctrl', 'p65_mHP1alpha', 'p65_KRAB', 'VPR_Ctrl', 'VPR_mHP1alpha', 'VPR_KRAB'))
+
+  summary_data_polii <- all %>%
+  group_by(activator, effector) %>%
+  summarize(N= length(polii_nuc_mean),
+  mean = mean(polii_nuc_mean*1000),
+  median = median(polii_nuc_mean*1000),
+  ci_lower = mean - qt(0.975, length(polii_nuc_mean) - 1) * sd(polii_nuc_mean*1000) / sqrt(length(polii_nuc_mean)),
+  ci_upper = mean + qt(0.975, length(polii_nuc_mean) - 1) * sd(polii_nuc_mean*1000) / sqrt(length(polii_nuc_mean))
+  )
+
+  summary_data_s5p <- all %>%
+  group_by(activator, effector) %>%
+  summarize(N= length(s5p_nuc_mean),
+  mean = mean(s5p_nuc_mean*1000),
+  median = median(s5p_nuc_mean*1000),
+  ci_lower = mean - qt(0.975, length(s5p_nuc_mean) - 1) * sd(s5p_nuc_mean*1000) / sqrt(length(s5p_nuc_mean)),
+  ci_upper = mean + qt(0.975, length(s5p_nuc_mean) - 1) * sd(s5p_nuc_mean*1000) / sqrt(length(s5p_nuc_mean))
+  )
+
+df_p_val_polii <- all %>%
+  rstatix::group_by(activator) %>%
+  rstatix::wilcox_test(polii_nuc_mean ~ effector)
+write.csv(df_p_val_polii, file = paste0(outdir, timestamp, "_data", "/polii_signal_data_no-dox_wilcox_stats.csv"), row.names = FALSE)
+
+df_p_val_s5p <- all %>%
+  rstatix::group_by(activator) %>%
+  rstatix::wilcox_test(s5p_nuc_mean ~ effector)
+write.csv(df_p_val_s5p, file = paste0(outdir, timestamp, "_data", "/s5p_signal_data_no-dox_wilcox_stats.csv"), row.names = FALSE)
+
+# signal across conditions
+overall_polii_no_dox <- ggplot(all, aes(x = activator, y = ((polii_nuc_mean)*1000), col = effector)) +
+  xlab("") +
+  ylab("Nuclear RNA PolII Signal (a.u.)")+
+  geom_boxplot(aes(col = effector), width = 0.5, position = position_dodge(width = 0.8))+
+  scale_color_manual(values = c( "black","red", "skyblue")) +
+  # make into two different plots split by cell background
+  theme(strip.background = element_blank(), strip.placement = "outside") +
+  theme(
+    # give the plot a border and margin
+    panel.border = element_rect(color="black",fill=NA,size=2),
+    plot.margin = unit(c(0.0,0.0,0.0,0.0),"cm"),
+    # define axis text color, fontsize and tick properties
+    axis.text = element_text(size=10,colour="black"),
+    #axis.text.x = element_text(angle=90),
+    axis.ticks.y = element_line(colour="black",size=1),
+    axis.ticks.length=unit(3,"mm"),
+    # remove x axis ticks
+    axis.ticks.x = element_blank(),
+    # Remove grid lines
+    panel.grid.major = element_blank(), 
+    panel.grid.major.x = element_blank(),
+    panel.grid.minor = element_blank(),
+    # Change panel background
+    panel.background = element_blank(),
+    legend.key.width = unit(0.5, "cm"),  # Adjust legend width
+    legend.key.height = unit(0.5, "cm")
+  )+ 
+  geom_pwc(aes(group = effector), method = "wilcox_test", label = "p.adj.signif",
+    y.position = 30, bracket.nudge.y = 0.08)
+print(overall_polii_no_dox)
+ggsave(paste0(outdir, timestamp, "_data", "/polii_signal_no-dox.pdf"), overall_polii_no_dox, dpi=300)
+write.csv(all, file = paste0(outdir, timestamp, "_data", "/polii_signal_data_no-dox.csv"), row.names = FALSE)
+write.csv(summary_data_polii, file = paste0(outdir, timestamp, "_data", "/polii_signal_summary_no-dox.csv"), row.names = FALSE)
+
+# signal across conditions
+overall_s5p_no_dox <- ggplot(all, aes(x = activator, y = ((s5p_nuc_mean)*1000), col = effector)) +
+  xlab("") +
+  ylab("Nuclear RNA PolII S5p Signal (a.u.)")+
+  geom_boxplot(aes(col = effector), width = 0.5, position = position_dodge(width = 0.8))+
+  scale_color_manual(values = c( "black","red", "skyblue")) +
+  # make into two different plots split by cell background
+  theme(strip.background = element_blank(), strip.placement = "outside") +
+  theme(
+    # give the plot a border and margin
+    panel.border = element_rect(color="black",fill=NA,size=2),
+    plot.margin = unit(c(0.0,0.0,0.0,0.0),"cm"),
+    # define axis text color, fontsize and tick properties
+    axis.text = element_text(size=10,colour="black"),
+    #axis.text.x = element_text(angle=90),
+    axis.ticks.y = element_line(colour="black",size=1),
+    axis.ticks.length=unit(3,"mm"),
+    # remove x axis ticks
+    axis.ticks.x = element_blank(),
+    # Remove grid lines
+    panel.grid.major = element_blank(), 
+    panel.grid.major.x = element_blank(),
+    panel.grid.minor = element_blank(),
+    # Change panel background
+    panel.background = element_blank(),
+    legend.key.width = unit(0.5, "cm"),  # Adjust legend width
+    legend.key.height = unit(0.5, "cm")
+  )+
+  geom_pwc(aes(group = effector), method = "wilcox_test", label = "p.adj.signif",
+    y.position = 100, bracket.nudge.y = 0.08)
+print(overall_s5p_no_dox)
+ggsave(paste0(outdir, timestamp, "_data", "/s5p_signal_no-dox.pdf"), overall_s5p_no_dox, dpi=300)
+write.csv(all, file = paste0(outdir, timestamp, "_data", "/s5p_signal_data_no-dox.csv"), row.names = FALSE)
+write.csv(summary_data_s5p, file = paste0(outdir, timestamp, "_data", "/s5p_signal_summary_no-dox.csv"), row.names = FALSE)
+
+```
+

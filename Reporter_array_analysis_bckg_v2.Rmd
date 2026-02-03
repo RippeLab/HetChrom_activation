@@ -1,0 +1,175 @@
+---
+title: "Reporter_array_analysis_v1"
+output: html_document
+
+---
+
+Preprocessing  with Fiji Macro, Cellpose and ilastik
+
+	1. Convert .ims to .tif and MaxProj with Macro_IMS_to_TIFF_and__makemaxZ_saveTIFF-NMv6.ijm
+	2. Split channels of maxproj images with splitchannel_saveim_V2.ijm
+	3. Cellpose
+		- Range cell diameter for U2OS 
+		- Batch processing: ~ 270 diameter  pixels
+  4. Merge 637nm (Halo) and 488nm (GFP) channels with Merge_channels_v1_CT.ijm
+  5. Import C1C3 .tif images + nuclear masks to ilastik, train with 5 images 
+
+---
+
+Obtain quantitative data for ALL IMAGES
+
+```{r}
+library(EBImage)
+library(dplyr)
+library(stringr)
+source('insert file path/quantNuclei_v01_LF.R')
+
+datadir <- 'insert file path/output/'
+nucmaskdir <- 'insert file path/dapi/mask/'
+halodir <- 'insert file path/637nm/'
+gfpdir <- 'insert file path/488nm/'
+
+
+filelist <- list.files(halodir, pattern = ".tif")
+#remove characters that is different between mask' and images' name
+imagenames <- gsub(".tif","", filelist)
+imagenames <- gsub("637nm_corr_","", imagenames)
+
+
+lapply(imagenames, function(filename){
+  
+  nucmasks <- readImage(paste0(nucmaskdir, '405nm_corr_', filename, '_cp_masks.png'))
+  halo <- readImage(paste0(halodir, '637nm_corr_', filename, '.tif'))
+  gfp <- readImage(paste0(gfpdir, '488nm_corr_', filename, '.tif'))
+  
+  #reformat nuclear masks
+  nucmasks <-Image(as.numeric(as.factor(nucmasks))-1,dim = dim(nucmasks))
+  
+  #remove nuclei on edge of image
+  dims<-dim(nucmasks)
+  #get all nuclei ids that lies at the border of the nucmasks
+  border<- c(nucmasks[1:dims[1],1], nucmasks[1:dims[1],dims[2]],nucmasks[1,1:dims[2]],nucmasks[dims[1],1:dims[2]])
+  ids <- unique(border[which(border != 0)])
+  #somehow rmObjects does not work on double anymore
+  storage.mode(nucmasks) <- 'integer'
+  nucmasks <- rmObjects((nucmasks), ids)
+  storage.mode(nucmasks) <- 'double'
+  
+  #### Get morphological features of nucleus and array
+  #nucleus
+  #some images do not have any cells identified --> fill df with NA
+  nucfeat <- cbind(computeFeatures.moment(nucmasks),computeFeatures.shape(nucmasks))
+  if (is.null(nucfeat) == FALSE){
+  nucfeat_area <- data.frame("x"=round(nucfeat[,"m.cx"]),"y"=round(nucfeat[,"m.cy"]),"nucleus_area"=nucfeat[,"s.area"])
+  nucfeat_area$maskID <- rownames(nucfeat)
+  feat <- nucfeat_area 
+  feat_colorder <- c("maskID", "x", "y", "nucleus_area")
+  feat <- feat[, feat_colorder]
+  
+  ### Obtain Halo and GFP signal intensity features at Nucleus (to ensure no signal is not due to untransfected) (esp for nodox samples)
+  halo_nuc_mean <- quantNuclei(nucmasks, halo, mean)
+  halo_nuc_median <- quantNuclei(nucmasks, halo, median)
+  halo_nuc_intden <- quantNuclei(nucmasks, halo, sum)
+  
+  gfp_nuc_mean <- quantNuclei(nucmasks, gfp, mean)
+  gfp_nuc_median <- quantNuclei(nucmasks, gfp, median)
+  gfp_nuc_intden <- quantNuclei(nucmasks, gfp, sum)
+  
+  #why not sd and max for the gfp and halo?
+  
+  halo_gfp_nuc <- data.frame(halo_nuc_mean, halo_nuc_median, halo_nuc_intden, gfp_nuc_mean, gfp_nuc_median, gfp_nuc_intden)
+  
+  #summary
+  quantsum <- data.frame('Image'= filename, feat, halo_gfp_nuc)
+  
+  #quantsum <- data.frame('Image'= filename, feat, reporter_nuc, halo_gfp_nuc) %>% full_join(halo_gfp_array, by="maskID") %>% full_join(reporter_array, by="maskID") 
+  
+  write.table(quantsum, paste0(datadir, filename, '.csv'), sep="\t", row.names = F)
+  }
+})
+
+```
+
+
+Combine all quantitative data (.csv) together in one dataframe
+
+```{r}
+library(dplyr)
+library(stringr)
+
+datadir <- 'insert file path/output/'
+
+#read csv files
+filelist <- list.files(datadir, pattern='.csv')
+
+#combine all quantsum csv files 
+datalist <- lapply(filelist, function(filename){
+  df <- read.table(paste0(datadir, filename), sep="\t", header=TRUE)
+})
+all <- bind_rows(datalist)
+
+all <- all %>% mutate(Expt = case_when(
+                str_detect(Image, '_co-recruit_PolII_S5P_bckg_') ~ 'PolII',
+                str_detect(Image, '_combined_effector_repressor_bckg_') ~ 'Co-Recruit',
+                str_detect(Image, '_persistent-repressor_bckg_') ~ 'Distal-Recruit'
+)) 
+
+
+```
+
+Filtering and Plots
+
+
+```{r}
+library(ggplot2)
+library(tidyr)
+library(dplyr)
+library(EnvStats)
+library(scatterplot3d)
+
+##### Filtering #####
+outdir <- 'insert file path/data/'
+
+# create timestamp for this run
+timestamp <- format(Sys.time(),"%Y%m%d%H%M%S")
+
+# create outout folder
+dir.create(paste0(outdir,timestamp,"_data"))
+
+## Remove too small/big nuclei
+plot(all$nucleus_area)
+
+# threshold decided based on plotting nucleus area
+nuc_up <- 35000
+nuc_down <- 5000
+
+all_filt <- all %>% filter(between(nucleus_area, nuc_down, nuc_up))
+
+summary_gfp_nuc <- all_filt %>%
+  group_by(Expt) %>%
+  summarize(
+        min = min(gfp_nuc_mean),
+        Q1 = quantile(gfp_nuc_mean, 0.25),
+        median = median(gfp_nuc_mean),
+        Q3 = quantile(gfp_nuc_mean, 0.75),
+        max = max(gfp_nuc_mean),
+        IQR = IQR(gfp_nuc_mean)
+    ) %>% mutate(upper_whisker_gfp = (Q3 + 1.5 * IQR))
+
+summary_halo_nuc <- all_filt %>%
+  group_by(Expt) %>%
+  summarize(
+        min = min(halo_nuc_mean),
+        Q1 = quantile(halo_nuc_mean, 0.25),
+        median = median(halo_nuc_mean),
+        Q3 = quantile(halo_nuc_mean, 0.75),
+        max = max(halo_nuc_mean),
+        IQR = IQR(halo_nuc_mean)
+    ) %>% mutate(upper_whisker_halo = (Q3 + 1.5 * IQR))
+
+write.csv(summary_halo_nuc, file = paste0(outdir, timestamp, "_data", "/bckg_halo_max.csv"), row.names = FALSE)
+write.csv(summary_gfp_nuc, file = paste0(outdir, timestamp, "_data", "/bckg_gfp_max.csv"), row.names = FALSE)
+
+```
+
+

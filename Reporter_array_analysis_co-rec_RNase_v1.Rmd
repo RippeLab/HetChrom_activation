@@ -1,0 +1,163 @@
+---
+title: "Reporter_array_analysis_v1"
+output: html_document
+
+---
+
+Preprocessing  with Fiji Macro, Cellpose and ilastik
+
+	1. Convert .ims to .tif and MaxProj with Macro_IMS_to_TIFF_and__makemaxZ_saveTIFF-NMv6.ijm
+	2. Split channels of maxproj images with splitchannel_saveim_V2.ijm
+	3. Cellpose
+		- Range cell diameter for U2OS 
+		- Batch processing: ~ 270 diameter  pixels
+  4. Merge 637nm (Halo) and 488nm (GFP) channels with Merge_channels_v1_CT.ijm
+  5. Import C1C3 .tif images + nuclear masks to ilastik, train with 5 images 
+
+---
+
+Obtain quantitative data for ALL IMAGES
+
+```{r}
+
+library(EBImage)
+library(dplyr)
+library(stringr)
+source('insert file path/quantNuclei_v01_LF.R')
+
+datadir <- 'insert file path/output/'
+nucmaskdir <- 'insert file path/dapi/mask/'
+reporterdir <- 'insert file path/ms2_fish/'
+
+filelist <- list.files(reporterdir, pattern = ".tif")
+#remove characters that is different between mask' and images' name
+imagenames <- gsub(".tif","", filelist)
+imagenames <- gsub("C2-","", imagenames)
+
+lapply(imagenames, function(filename){
+  
+  #Load images
+  nucmasks <- readImage(paste0(nucmaskdir, 'C4-', filename, '_cp_masks.png'))
+  #arraymasks_ori <- readImage(paste0(arraymaskdir, 'C1C3-', filename, '_Probabilities.tiff'))
+  reporter <- readImage(paste0(reporterdir, 'C2-', filename, '.tif'))
+  #halo <- readImage(paste0(halodir, 'C1-', filename, '.tif'))
+  #gfp <- readImage(paste0(gfpdir, 'C3-', filename, '.tif'))
+  
+  #reformat nuclear masks
+  nucmasks <-Image(as.numeric(as.factor(nucmasks))-1,dim = dim(nucmasks))
+  
+  #remove nuclei on edge of image
+  dims<-dim(nucmasks)
+  #get all nuclei ids that lies at the border of the nucmasks
+  border<- c(nucmasks[1:dims[1],1], nucmasks[1:dims[1],dims[2]],nucmasks[1,1:dims[2]],nucmasks[dims[1],1:dims[2]])
+  ids <- unique(border[which(border != 0)])
+  #somehow rmObjects does not work on double anymore
+  storage.mode(nucmasks) <- 'integer'
+  nucmasks <- rmObjects((nucmasks), ids)
+  storage.mode(nucmasks) <- 'double'
+  
+  #### Get morphological features of nucleus and array
+  #nucleus
+  #some images do not have any cells identified --> fill df with NA
+  nucfeat <- cbind(computeFeatures.moment(nucmasks),computeFeatures.shape(nucmasks))
+  if (is.null(nucfeat)){
+    nucfeat_area <- data.frame("x" = NA, "y" = NA, "nucleus_area" = NA, "maskID" = NA)
+  } else{
+    nucfeat_area <- data.frame("x"=round(nucfeat[,"m.cx"]),"y"=round(nucfeat[,"m.cy"]),"nucleus_area"=nucfeat[,"s.area"])
+    nucfeat_area$maskID <- rownames(nucfeat)
+  }
+  
+  feat <- nucfeat_area
+  feat_colorder <- c("maskID", "x", "y", "nucleus_area")
+  feat <- feat[, feat_colorder]
+  
+  ### Obtain MS2 signal intensity features at Nucleus (to ensure no signal is not due to untransfected + nodox samples quant)
+  reporter_nuc_mean <- quantNuclei(nucmasks, reporter, mean)
+  reporter_nuc_median <- quantNuclei(nucmasks, reporter, median)
+  reporter_nuc_sd <- quantNuclei(nucmasks, reporter, sd)
+  reporter_nuc_max <- quantNuclei(nucmasks, reporter, max)
+  reporter_nuc_intden <- quantNuclei(nucmasks, reporter, sum)
+  #what is intden?
+  reporter_nuc <- data.frame(reporter_nuc_mean, reporter_nuc_median, reporter_nuc_sd, reporter_nuc_max, reporter_nuc_intden)
+  if (nrow(reporter_nuc) == 0) {
+  reporter_nuc <- data.frame(
+    reporter_nuc_mean = NA,
+    reporter_nuc_median = NA,
+    reporter_nuc_sd = NA,
+    reporter_nuc_max = NA,
+    reporter_nuc_intden = NA
+  )
+  }
+
+  quantsum <- data.frame('Image'= filename, feat, reporter_nuc) 
+
+  write.table(quantsum, paste0(datadir, filename, '.csv'), sep="\t", row.names = F)
+})
+```
+
+
+Combine all quantitative data (.csv) together in one dataframe
+
+```{r}
+library(dplyr)
+library(stringr)
+
+datadir <- 'insert file path/output/'
+
+#read csv files
+filelist <- list.files(datadir, pattern='.csv')
+
+#combine all quantsum csv files 
+datalist <- lapply(filelist, function(filename){
+  df <- read.table(paste0(datadir, filename), sep="\t", header=TRUE)
+})
+all <- bind_rows(datalist)
+
+all <- all %>% mutate(dox = case_when(
+                str_detect(Image, '_\\+Dox_') ~ 'yes',
+                str_detect(Image, '_-Dox_') ~ 'no'
+)) 
+all$dox <- as.factor(all$dox)
+```
+
+Filtering and Plots
+
+
+```{r}
+library(ggplot2)
+library(tidyr)
+library(EnvStats)
+library(scatterplot3d)
+
+##### Filtering #####
+outdir <- 'insert file path/data/'
+
+
+# create timestamp for this run
+timestamp <- format(Sys.time(),"%Y%m%d%H%M%S")
+
+# create outout folder
+dir.create(paste0(outdir,timestamp,"_data"))
+
+## Remove too small/big nuclei
+plot(all$nucleus_area)
+
+# threshold decided based on plotting nucleus area
+nuc_up <- 35000
+nuc_down <- 5000
+
+all_filt <- all %>% filter(between(nucleus_area, nuc_down, nuc_up))
+
+summary_reporter_nuc <- all_filt %>%
+  summarize(
+        min = min(reporter_nuc_mean),
+        Q1 = quantile(reporter_nuc_mean, 0.25),
+        median = median(reporter_nuc_mean),
+        Q3 = quantile(reporter_nuc_mean, 0.75),
+        max = max(reporter_nuc_mean),
+        IQR = IQR(reporter_nuc_mean)
+    ) %>% mutate(upper_whisker_reporter_co_recruit = (Q3 + 1.5 * IQR))
+write.csv(summary_reporter_nuc, file = paste0(outdir, timestamp, "_data", "/bckg_reporter_co-recruit.csv"), row.names = FALSE)
+```
+
+

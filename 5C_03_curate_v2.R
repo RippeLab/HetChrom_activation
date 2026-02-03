@@ -14,7 +14,7 @@ library(abind)
 ####################################################################################################################
 
 # define input folder which corresponds to the segmentCC results folder
-input_folder <- "/Volumes/AnneWork/Robin/iMEF_endpoint/combined_analysis_new/wt/1618_p65/20230505161157_segmentCC_results/"
+input_folder <- "insert file path/wt/p65/xxxxxxxxxxxxxx_segmentCC_results/"
 
 ####################################################################################################################
 ############################################### FIXED ##############################################################

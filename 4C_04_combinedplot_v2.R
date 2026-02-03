@@ -2,7 +2,7 @@
 
 
 ############### User-defined parameters ##############################################################################
-folder_curated <- "/Volumes/sd17B002-1/2026_HetChrom/Fig2/BC_HP1H3K9me3stay/_analysis_VPR/"
+folder_curated <- "insert file path/_analysis_VPR/"
 cell_filter <- "g"  # "g" for good cells, "b" for bad cells, "gb" for both
 conditions <- c("ctrl", "VPR")
 channels <- c("DNA", "dCas9", "H3K9me3", "HP1")

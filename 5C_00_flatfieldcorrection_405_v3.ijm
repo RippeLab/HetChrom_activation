@@ -15,7 +15,7 @@ print(logfile, "Analyzing data in " + dir);
 
 // Get gain file and dark counts for flat-field correction
 //FFCdir = getDirectory("Choose the directory which contains the files for flat-field correction");
-FCCdir = "/Volumes/sd17B002/Microscopy-Dragonfly/Image-Analysis/Flat-Field-Correction/2022-05-16/";
+FCCdir = "insert file path";
 FFCfiles = getFileList(FFCdir);
 
 Dialog.create("Manual settings");

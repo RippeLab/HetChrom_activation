@@ -10,11 +10,11 @@
 ####################################################################################################################
 
 # load functions
-source("/Volumes/AnneWork/Robin/iMEF_endpoint/_scripts/02_scripts_5Channels/functions/makeCCMask.R")
-source("/Volumes/AnneWork/Robin/iMEF_endpoint/_scripts/02_scripts_5Channels/functions/makeNucMask.R")
+source("insert file path/functions/makeCCMask.R")
+source("insert file path/functions/makeNucMask.R")
 
 # specify location of input (maximum-intensity projection .tif files)
-folder <- "/Volumes/AnneWork/Robin/iMEF_endpoint/combined_analysis_new/dn/1502_VP16/"
+folder <- "insert file path/dn/VP16/"
 
 # adjustable adaptive thresholding offset for nucleus segmentation
 # (default = 0.0008)

@@ -16,7 +16,7 @@
 library(EBImage)
 
 # specify parent directory of functions
-inputfolder <- "/Users/robin/Desktop/CC_pipeline_5c/05_R_analysis/functions/"
+inputfolder <- "insert file path/functions/"
 setwd(inputfolder)
 
 source("importSpotData_v01.R")
@@ -27,7 +27,7 @@ source("quantNuclei_v01.R")
 ###############################################################################################
 
 # specify parent directory of input files
-inputfolder <- "/Volumes/AnneWork/Robin/iMEF_endpoint/combined_analysis_new/wt/1299_/bg_and_ff_corrected/"
+inputfolder <- "insert file path/wt/ctrl/bg_and_ff_corrected/"
 
 # specify subdirectories of parent
 inputDAPI <- paste0(inputfolder, "405_ffc/")

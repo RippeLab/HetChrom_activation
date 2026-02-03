@@ -8,7 +8,7 @@
 ####################################################################################################################
 
 # specify folder location of the curateCC results
-folder_curated <- "/Volumes/sd17B002-1/2026_HetChrom/Fig2/BC_HP1H3K9me3stay/wt/1473_VPR/2024-09-10_15-32-38_segmentCC_results/2024-09-10_15-40-55_curateCC_results/"
+folder_curated <- "insert file path/wt/VPR/xxxx-xx-xx_xx-xx-xx_segmentCC_results/xxxx-xx-xx_xx-xx-xx_curateCC_results/"
 
 # select cell quality filtering 
 # "g" (include good cells only), "b" (include bad cells only), "gb" (include both)

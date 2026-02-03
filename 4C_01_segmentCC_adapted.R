@@ -5,15 +5,15 @@
 # load libraries and functions
 library(EBImage)
 library(abind)
-source("/Volumes/sd17B002-1/2026_HetChrom/Fig2/BC_HP1H3K9me3stay/_scripts_4Channels/functions/makeCCMask.R")
-source("/Volumes/sd17B002-1/2026_HetChrom/Fig2/BC_HP1H3K9me3stay/_scripts_4Channels/functions/makeNucMask.R")
+source("insert file path/functions/makeCCMask.R")
+source("insert file path/functions/makeNucMask.R")
 
 ####################################################################################################################
 ############################################### ADJUSTABLE PARAMETERS ##############################################
 ####################################################################################################################
 
 # location of the input (maximum-intensity projection .tif files)
-folder <- "/Volumes/sd17B002/2026_HetChrom/Fig2/wt/1618_p65/"
+folder <- "insert file path/wt/p65/"
 
 # adjustable adaptive thresholding offset for nucleus segmentation
 # default is 0.0008

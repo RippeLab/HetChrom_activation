@@ -14,7 +14,7 @@ library(abind)
 ####################################################################################################################
 
 # define input folder which corresponds to the segmentCC results folder
-input_folder <- "/Volumes/sd17B002/2026_HetChrom/Fig2/BC_HP1H3K9me3stay/wt/1546_p300core/2024-12-19_14-21-21_segmentCC_results/"
+input_folder <- "insert file path/wt/p300core/xxxx-xx-xx_xx-xx-xx_segmentCC_results/"
 
 ####################################################################################################################
 ############################################### FIXED ##############################################################

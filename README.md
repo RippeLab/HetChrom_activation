@@ -8,17 +8,17 @@ Quantification:
 Thresholding-based segmentation is based on the functions makeNucMask.R and makeCCMask.R.
 4C or 5C R scripts were used depending on whether the source images had 4 or 5 channels (4: e.g. DNA, dCas9, methylation/acetylation; 5: e.g. DNA, dCas9, MSR RNA, AC, p300)
 Use scripts in sequence:
-4C_01_segmentCC uses the two functions to segment nuclei and chromocenters
-4C_02_curateCC is a semiautomated R script guiding the user through each segmentation so artifacts and erroneous segmentations can be annotated
-4C_03 + 4C_04 are used for plotting based on the resulting csv files of the previous scripts
+- 4C_01_segmentCC uses the two functions to segment nuclei and chromocenters
+- 4C_02_curateCC is a semiautomated R script guiding the user through each segmentation so artifacts and erroneous segmentations can be annotated
+- 4C_03 + 4C_04 are used for plotting based on the resulting csv files of the previous scripts
 
-5C_00_flatfieldcorrection_405: this is a FIJI macro that performs flatfieldcorrection of the DAPI channel (405 nm) to improve segmentation accuracy
-5C_01_segmentCC: uses the two functions to segment nuclei and chromocenters
-5C_02_RS-FISH_batch: script using the RS-FISH plugin to call spots. This is used to detect single MSR RNAs.
-5C_03_curateCC: is a semiautomated R script guiding the user through each segmentation so artifacts and erroneous segmentations can be annotated
-5C_04_analysis_batch: take the segmentation masks, the spot data and quantifies everything needed using quantNuclei_v01.R
-5C_05_combinecsv: combines the necessary csvs into one
-5C_06_plot: used for plotting based on the resulting csv files of the previous scripts
+- 5C_00_flatfieldcorrection_405: this is a FIJI macro that performs flatfieldcorrection of the DAPI channel (405 nm) to improve segmentation accuracy
+- 5C_01_segmentCC: uses the two functions to segment nuclei and chromocenters
+- 5C_02_RS-FISH_batch: script using the RS-FISH plugin to call spots. This is used to detect single MSR RNAs.
+- 5C_03_curateCC: is a semiautomated R script guiding the user through each segmentation so artifacts and erroneous segmentations can be annotated
+- 5C_04_analysis_batch: take the segmentation masks, the spot data and quantifies everything needed using quantNuclei_v01.R
+- 5C_05_combinecsv: combines the necessary csvs into one
+- 5C_06_plot: used for plotting based on the resulting csv files of the previous scripts
 
 Further annotation can be found within the scripts.
 
